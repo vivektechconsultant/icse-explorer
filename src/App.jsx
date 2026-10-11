@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { SUBJECTS, SUBJECT_ORDER } from "./subjects.js";
 import { LEGACY_IDS } from "./maths.js";
 import { TESTS } from "./tests.js";
+import { usePwa } from "./pwa.js";
+import { LOGO_SRC } from "./logo.js";
 
 const STORE = "icse-explorer-v3";
 const V2_STORE = "icse-explorer-v2";
@@ -15,6 +17,19 @@ const TABS = [
 ];
 
 const TEST_MINUTES = 15;
+
+const ICONS = {
+  chapters: "M4 6h16M4 12h16M4 18h10",
+  physics: "M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0M12 3c4 0 9 4 9 9s-5 9-9 9-9-4-9-9 5-9 9-9M3.5 8.5c3-2 14-2 17 7M3.5 15.5c3 2 14 2 17-7",
+  chemistry: "M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3M7.5 14h9",
+  maths: "M5 5h14M5 5l7 7-7 7h14M19 19v-2M19 5v2",
+  sheet: "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
+};
+const Icon = ({ name }) => (
+  <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d={ICONS[name]} />
+  </svg>
+);
 
 // Same shuffle every time for a given question, so answers are not all in one position.
 function seededOrder(seed, n) {
@@ -108,6 +123,26 @@ export default function App() {
   const [revised, setRevised] = useState(saved?.revised ?? {});
   const [best, setBest] = useState(saved?.best ?? {});
   const [menuOpen, setMenuOpen] = useState(false);
+  const [iosTip, setIosTip] = useState(false);
+  const pwa = usePwa();
+  const [offlineToast, setOfflineToast] = useState(false);
+  useEffect(() => {
+    if (pwa.online) { setOfflineToast(false); return; }
+    setOfflineToast(true);
+    const t = setTimeout(() => setOfflineToast(false), 5000);
+    return () => clearTimeout(t);
+  }, [pwa.online]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("keydown", onKey);
+    document.body.classList.add("drawer-open");
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.classList.remove("drawer-open");
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     try {
@@ -132,6 +167,7 @@ export default function App() {
 
   const switchSubject = (subj) => {
     setSubject(subj);
+    setMenuOpen(false);
     setQuery("");
     if (view !== "sheet") setView("chapter");
   };
@@ -144,24 +180,24 @@ export default function App() {
       <header>
         <div className="bar">
           <div className="brand">
-            <h1>ICSE Explorer</h1>
+            <img className="brand-logo" src={LOGO_SRC} alt="" width="52" height="52" />
+            <div className="brand-text">
+            <h1>ICSE Explorer{!pwa.online && <span className="offline-badge">Offline</span>}</h1>
             <p>Class 10 Physics, Chemistry and Mathematics</p>
+            </div>
           </div>
-          <div className="subjects" role="group" aria-label="Choose subject">
+          <div className="subjects desk-only" role="group" aria-label="Choose subject">
             {SUBJECT_ORDER.map((id) => (
               <button key={id} aria-pressed={subject === id} onClick={() => switchSubject(id)}>
                 {SUBJECTS[id].name}
               </button>
             ))}
           </div>
-          <button
-            className="btn menu-toggle"
-            aria-expanded={menuOpen}
-            aria-controls="chapter-nav"
-            onClick={() => setMenuOpen((o) => !o)}
-          >
-            Chapters
-          </button>
+          {(pwa.canInstall || pwa.showIOSHint) && (
+            <button className="btn install" onClick={() => (pwa.canInstall ? pwa.install() : setIosTip(true))}>
+              Install app
+            </button>
+          )}
           <div className="search">
             <input
               type="search"
@@ -172,7 +208,7 @@ export default function App() {
             />
           </div>
           <button
-            className={"btn" + (view === "sheet" && !searching ? " on" : "")}
+            className={"btn desk-only" + (view === "sheet" && !searching ? " on" : "")}
             onClick={() => { setView("sheet"); setQuery(""); setMenuOpen(false); }}
           >
             {S.formulaLabel === "Equations" ? "Equation sheet" : "Formula sheet"}
@@ -181,7 +217,13 @@ export default function App() {
       </header>
 
       <div className="layout">
-        <nav id="chapter-nav" className={menuOpen ? "open" : ""} aria-label="Chapters">
+        {menuOpen && <div className="backdrop" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
+        <nav id="chapter-nav" className={menuOpen ? "open" : ""} aria-label={`${S.name} chapters`}>
+          <div className="drawer-head">
+            <img src={LOGO_SRC} alt="" width="36" height="36" />
+            <strong>{S.name} chapters</strong>
+            <button className="btn small" onClick={() => setMenuOpen(false)}>Close</button>
+          </div>
           <div className="overall">
             <span className="track" aria-hidden="true">
               <i style={{ width: `${Math.round((totalRevised / totalSections) * 100)}%` }} />
@@ -235,6 +277,45 @@ export default function App() {
           )}
         </main>
       </div>
+
+      <nav className="bottom-nav" aria-label="Quick navigation">
+        <button aria-expanded={menuOpen} aria-controls="chapter-nav" className={menuOpen ? "on" : ""} onClick={() => setMenuOpen((o) => !o)}>
+          <Icon name="chapters" /><span>Chapters</span>
+        </button>
+        {SUBJECT_ORDER.map((id) => (
+          <button key={id} aria-pressed={subject === id} className={subject === id && !menuOpen ? "on" : ""} onClick={() => switchSubject(id)}>
+            <Icon name={id} /><span>{SUBJECTS[id].short}</span>
+          </button>
+        ))}
+        <button className={view === "sheet" && !searching && !menuOpen ? "on" : ""} onClick={() => { setView("sheet"); setQuery(""); setMenuOpen(false); window.scrollTo({ top: 0 }); }}>
+          <Icon name="sheet" /><span>{S.formulaLabel}</span>
+        </button>
+      </nav>
+
+      <div className="toasts" aria-live="polite">
+        {offlineToast && <div className="toast">You are offline. All chapters, quizzes and tests still work.</div>}
+        {pwa.updateReady && (
+          <div className="toast">
+            A new version is ready.
+            <button className="btn small primary" onClick={pwa.applyUpdate}>Update</button>
+          </div>
+        )}
+      </div>
+
+      {iosTip && (
+        <div className="modal-wrap" role="dialog" aria-modal="true" aria-labelledby="ios-tip-h" onClick={() => setIosTip(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <img className="modal-logo" src={LOGO_SRC} alt="ICSE Explorer crest" width="88" height="88" />
+            <h3 id="ios-tip-h">Install on iPhone or iPad</h3>
+            <ol>
+              <li>Tap the Share button in Safari's toolbar.</li>
+              <li>Choose “Add to Home Screen”.</li>
+              <li>Tap “Add”. ICSE Explorer opens full screen and works offline.</li>
+            </ol>
+            <button className="btn primary" onClick={() => setIosTip(false)}>Got it</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
