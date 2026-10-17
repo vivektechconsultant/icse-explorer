@@ -4,6 +4,16 @@ import { LEGACY_IDS } from "./maths.js";
 import { TESTS } from "./tests.js";
 import { usePwa } from "./pwa.js";
 import { LOGO_SRC } from "./logo.js";
+import {
+  AdPlacement,
+  ANALYTICS_ID,
+  CONTACT_EMAIL,
+  enableAnalytics,
+  disableAnalytics,
+  readAnalyticsConsent,
+  saveAnalyticsConsent,
+  trackAppView,
+} from "./monetization.js";
 
 const STORE = "icse-explorer-v3";
 const V2_STORE = "icse-explorer-v2";
@@ -124,8 +134,39 @@ export default function App() {
   const [best, setBest] = useState(saved?.best ?? {});
   const [menuOpen, setMenuOpen] = useState(false);
   const [iosTip, setIosTip] = useState(false);
+  const [analyticsConsent, setAnalyticsConsent] = useState(readAnalyticsConsent);
+  const [cookieNoticeOpen, setCookieNoticeOpen] = useState(
+    () => Boolean(ANALYTICS_ID) && readAnalyticsConsent() === null,
+  );
   const pwa = usePwa();
   const [offlineToast, setOfflineToast] = useState(false);
+
+  useEffect(() => {
+    if (analyticsConsent === true) enableAnalytics();
+    else if (analyticsConsent === false) disableAnalytics();
+  }, [analyticsConsent]);
+
+  const S = SUBJECTS[subject];
+  const chapter = chapters[subject] ?? 1;
+  const ch = S.chapters.find((c) => c.n === chapter) ?? S.chapters[0];
+  const searching = query.trim().length >= 2;
+
+  useEffect(() => {
+    if (!analyticsConsent) return;
+    const title = searching
+      ? "Search results | ICSE Explorer"
+      : view === "sheet"
+        ? `${S.name} ${S.formulaLabel} | ICSE Explorer`
+        : `${S.name}: ${ch.title} - ${tab} | ICSE Explorer`;
+    trackAppView(title);
+  }, [analyticsConsent, searching, view, S.name, S.formulaLabel, ch.title, tab]);
+
+  const chooseAnalytics = (granted) => {
+    saveAnalyticsConsent(granted);
+    setAnalyticsConsent(granted);
+    setCookieNoticeOpen(false);
+  };
+
   useEffect(() => {
     if (pwa.online) { setOfflineToast(false); return; }
     setOfflineToast(true);
@@ -149,11 +190,6 @@ export default function App() {
       localStorage.setItem(STORE, JSON.stringify({ subject, chapters, tab, revised, best }));
     } catch (e) {}
   }, [subject, chapters, tab, revised, best]);
-
-  const S = SUBJECTS[subject];
-  const chapter = chapters[subject] ?? 1;
-  const ch = S.chapters.find((c) => c.n === chapter) ?? S.chapters[0];
-  const searching = query.trim().length >= 2;
 
   const openChapter = (n, t = "notes", subj = subject) => {
     setSubject(subj);
@@ -275,8 +311,18 @@ export default function App() {
               onOpen={openChapter}
             />
           )}
+          <AdPlacement online={pwa.online} native={pwa.native} />
         </main>
       </div>
+
+      <footer className="app-footer" aria-label="Site information">
+        <a href="?page=about">About</a>
+        <a href="?page=privacy">Privacy policy</a>
+        {CONTACT_EMAIL && <a href={`mailto:${CONTACT_EMAIL}`}>Contact</a>}
+        {ANALYTICS_ID && (
+          <button className="link" onClick={() => setCookieNoticeOpen(true)}>Cookie settings</button>
+        )}
+      </footer>
 
       <nav className="bottom-nav" aria-label="Quick navigation">
         <button aria-expanded={menuOpen} aria-controls="chapter-nav" className={menuOpen ? "on" : ""} onClick={() => setMenuOpen((o) => !o)}>
@@ -301,6 +347,19 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {ANALYTICS_ID && cookieNoticeOpen && (
+        <aside className="cookie-notice" role="dialog" aria-labelledby="cookie-title" aria-describedby="cookie-description">
+          <div>
+            <h2 id="cookie-title">Analytics preferences</h2>
+            <p id="cookie-description">Allow optional Google Analytics to measure visits using generic screen names. Search text is never sent.</p>
+          </div>
+          <div className="cookie-actions">
+            <button className="btn small" onClick={() => chooseAnalytics(false)}>Reject analytics</button>
+            <button className="btn small primary" onClick={() => chooseAnalytics(true)}>Allow analytics</button>
+          </div>
+        </aside>
+      )}
 
       {iosTip && (
         <div className="modal-wrap" role="dialog" aria-modal="true" aria-labelledby="ios-tip-h" onClick={() => setIosTip(false)}>

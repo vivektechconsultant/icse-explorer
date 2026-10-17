@@ -13,6 +13,14 @@ It is a progressive web app: it can be installed on phones, tablets and computer
 
 Install prompts and offline mode only work on the built app served over HTTPS (or on localhost).
 
+## Analytics and advertising setup
+
+Copy `.env.example` to `.env.local` and set `VITE_GA_MEASUREMENT_ID` to the site's GA4 measurement ID. The app asks visitors before loading Analytics, stores that choice locally, offers a Cookie settings control in the footer, and sends generic screen names only (never chapter search text).
+
+AdSense is disabled until `VITE_ADSENSE_CLIENT_ID` (`ca-pub-…`) and `VITE_ADSENSE_SLOT_ID` are set. The ad slot is rendered only on the web while online, and only after a TCF consent-management platform exposes `window.__tcfapi`. Install and configure a Google-certified CMP before enabling ads; Google's consent requirements for visitors in the EEA, UK and Switzerland are not replaced by this app's Analytics choice. Configure the CMP for the site's actual audience, including applicable child/teen privacy settings.
+
+Before applying for AdSense, publish accurate owner/contact details with `VITE_CONTACT_EMAIL` and review the Privacy policy and About pages. A production build writes `dist/ads.txt` from `VITE_ADSENSE_CLIENT_ID` using Google's standard direct seller record; verify it matches the record shown in your AdSense account before deployment. Google makes the final policy and site-approval decision; code changes cannot guarantee approval. Environment values are embedded at build time, so rebuild after changing `.env.local`.
+
 ## Deploy
 
 `dist/` is a plain static site with relative paths, so it can be hosted anywhere that serves HTTPS:
